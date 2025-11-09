@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Matrix Room Storage</title>
-    <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.9.0/dist/api.min.js"></script>
+    <script src="https://unpkg.com/matrix-widget-api@^1.0.0/dist/api.umd.js"></script>
     <style>
         * {
             margin: 0;
@@ -237,25 +237,89 @@
                 <pre id="loadedData"></pre>
             </div>
         </div>
+        
+        <div class="section" style="margin-top: 20px;">
+            <details>
+                <summary style="cursor: pointer; font-weight: 600; color: #666; font-size: 12px;">
+                    🔍 Debug Console
+                </summary>
+                <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; margin-top: 10px;">
+                    <pre id="debugConsole" style="font-size: 11px; color: #555; max-height: 200px; overflow-y: auto; margin: 0;"></pre>
+                </div>
+            </details>
+        </div>
     </div>
 
     <script>
         // Global variables
         let widgetApi = null;
         let isReady = false;
+        
+        // Debug logging
+        function debugLog(message, data) {
+            const logEntry = `[${new Date().toLocaleTimeString()}] ${message} ${data ? JSON.stringify(data) : ''}`;
+            console.log(`[Widget Debug] ${message}`, data || '');
+            
+            // Also show in UI
+            const debugConsole = document.getElementById('debugConsole');
+            if (debugConsole) {
+                debugConsole.textContent += logEntry + '\n';
+                debugConsole.scrollTop = debugConsole.scrollHeight;
+            }
+        }
 
         // Initialize widget API
         async function initWidgetApi() {
+            debugLog('Starting initialization...');
+            debugLog('Window location:', window.location.href);
+            debugLog('In iframe?', window.parent !== window);
+            debugLog('Widget API available?', typeof window.mxwidgets !== 'undefined');
+            
+            if (typeof window.mxwidgets !== 'undefined') {
+                debugLog('mxwidgets object:', Object.keys(window.mxwidgets));
+            }
+            
+            // Check if we're in an iframe (basic widget detection)
+            const inIframe = window.parent !== window;
+            debugLog('Detected iframe context:', inIframe);
+            
+            if (!inIframe) {
+                debugLog('Not in iframe - showing error');
+                showNotWidgetMode();
+                return;
+            }
+            
             try {
                 const urlParams = new URLSearchParams(window.location.search);
                 const widgetId = urlParams.get('widgetId') || 'matrix-room-storage';
                 
-                // Initialize the widget API
-                widgetApi = new window.mxwidgets.WidgetApi(widgetId);
+                debugLog('Widget ID:', widgetId);
+                debugLog('URL params:', Object.fromEntries(urlParams));
                 
-                // Wait for ready event
+                // Try different ways to access the Widget API
+                let WidgetApiConstructor = null;
+                
+                if (window.mxwidgets && window.mxwidgets.WidgetApi) {
+                    WidgetApiConstructor = window.mxwidgets.WidgetApi;
+                } else if (window.MatrixWidget && window.MatrixWidget.WidgetApi) {
+                    WidgetApiConstructor = window.MatrixWidget.WidgetApi;
+                } else if (window.WidgetApi) {
+                    WidgetApiConstructor = window.WidgetApi;
+                }
+                
+                if (!WidgetApiConstructor) {
+                    throw new Error('Widget API constructor not found in any expected location');
+                }
+                
+                debugLog('Found WidgetApi constructor');
+                
+                // Initialize the widget API
+                widgetApi = new WidgetApiConstructor(widgetId);
+                debugLog('Widget API instance created');
+                
+                // Set up event listeners before starting
                 widgetApi.on('ready', async () => {
-                    console.log('Widget API ready');
+                    debugLog('Widget API ready event received!');
                     isReady = true;
                     
                     // Show success badge
@@ -265,27 +329,77 @@
                     showStatus('✅ Connected to Matrix room!', 'success');
                 });
                 
-                // Handle errors
                 widgetApi.on('error', (error) => {
-                    console.error('Widget API error:', error);
+                    debugLog('Widget API error:', error);
                     showStatus('⚠️ Widget API error: ' + error.message, 'error');
                 });
                 
                 // Start the widget API
+                debugLog('Starting widget API...');
                 await widgetApi.start();
+                debugLog('Widget API start() called');
+                
+                // Give it a moment to initialize
+                setTimeout(() => {
+                    if (!isReady) {
+                        debugLog('Widget not ready after 2 seconds, trying postMessage fallback');
+                        tryPostMessageFallback();
+                    }
+                }, 2000);
                 
             } catch (error) {
-                console.error('Failed to initialize widget API:', error);
+                debugLog('Failed to initialize widget API:', error);
+                console.error('Widget initialization error:', error);
                 
-                // Show error state
-                document.getElementById('widgetBadge').style.display = 'none';
-                document.getElementById('widgetError').style.display = 'block';
-                
-                // Disable buttons
-                document.querySelectorAll('button').forEach(btn => btn.disabled = true);
-                
-                showStatus('❌ Not running in widget mode. Please add this app as a widget to a Matrix room.', 'error');
+                // Try postMessage fallback
+                debugLog('Attempting postMessage fallback...');
+                tryPostMessageFallback();
             }
+        }
+        
+        // Fallback: Try to communicate directly via postMessage
+        function tryPostMessageFallback() {
+            debugLog('Setting up postMessage listener for fallback mode');
+            
+            window.addEventListener('message', (event) => {
+                debugLog('Received postMessage:', event.data);
+                
+                // Respond to capability requests
+                if (event.data && event.data.api === 'fromWidget' && event.data.action === 'capabilities') {
+                    debugLog('Responding to capabilities request');
+                    window.parent.postMessage({
+                        api: 'toWidget',
+                        widgetId: event.data.widgetId,
+                        requestId: event.data.requestId,
+                        response: {
+                            capabilities: []
+                        }
+                    }, '*');
+                }
+            });
+            
+            // Try to signal we're ready
+            window.parent.postMessage({
+                api: 'toWidget',
+                action: 'ready'
+            }, '*');
+            
+            showStatus('⚠️ Using fallback mode - limited functionality', 'info');
+        }
+        
+        function showNotWidgetMode(errorDetails) {
+            // Show error state
+            document.getElementById('widgetBadge').style.display = 'none';
+            document.getElementById('widgetError').style.display = 'block';
+            
+            // Disable buttons
+            document.querySelectorAll('button').forEach(btn => btn.disabled = true);
+            
+            let errorMsg = '❌ Not running in widget mode. Please add this app as a widget to a Matrix room.';
+            if (errorDetails) {
+                errorMsg += ' (Error: ' + errorDetails + ')';
+            }
+            showStatus(errorMsg, 'error');
         }
 
         function showStatus(message, type = 'info') {
