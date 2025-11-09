@@ -1,127 +1,93 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Room Notes</title>
-    <script src="https://unpkg.com/matrix-widget-api@1.7.0/dist/api.umd.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        .status { 
-            padding: 10px; 
-            margin-bottom: 15px; 
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        .status.success { background: #d4edda; color: #155724; }
-        .status.error { background: #f8d7da; color: #721c24; }
-        textarea {
-            width: 100%;
-            padding: 12px;
-            font-size: 14px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            min-height: 300px;
-            font-family: inherit;
-        }
-        button {
-            padding: 12px 24px;
-            margin: 10px 10px 0 0;
-            border: none;
-            border-radius: 6px;
-            background: #667eea;
-            color: white;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-        }
+        body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; }
+        .status { padding: 10px; margin-bottom: 15px; border-radius: 6px; font-size: 14px; }
+        .status.ok { background: #d4edda; color: #155724; }
+        .status.err { background: #f8d7da; color: #721c24; }
+        textarea { width: 100%; padding: 12px; font-size: 14px; border: 2px solid #ddd; border-radius: 6px; min-height: 300px; font-family: inherit; }
+        button { padding: 12px 24px; margin: 10px 10px 0 0; border: none; border-radius: 6px; background: #667eea; color: white; font-size: 14px; font-weight: 600; cursor: pointer; }
         button:hover { background: #5568d3; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
-    <div class="status" id="status">⏳ Connecting...</div>
+    <div class="status" id="s">⏳ Connecting...</div>
     <h2>📝 Room Notes</h2>
-    <textarea id="notes" placeholder="Your notes..." disabled></textarea>
+    <textarea id="t" placeholder="Your notes..." disabled></textarea>
     <br>
-    <button id="saveBtn" onclick="save()" disabled>💾 Save</button>
-    <button onclick="load()" disabled id="loadBtn">🔄 Load</button>
+    <button id="save" onclick="save()" disabled>💾 Save</button>
+    <button id="load" onclick="load()" disabled>🔄 Load</button>
 
     <script>
-        const KEY = 'social.hyphae.notes';
-        let api = null;
+        const DATA = 'hyphae.notes';
+        let ready = false;
 
-        window.addEventListener('DOMContentLoaded', async () => {
-            console.log('Initializing...');
-            
-            // Wait for library to load
-            if (typeof window.mxwidgets === 'undefined') {
-                console.error('Widget API not loaded!');
-                document.getElementById('status').textContent = '❌ Library failed to load';
-                document.getElementById('status').className = 'status error';
-                return;
-            }
+        // Send message to parent
+        function send(action, data) {
+            window.parent.postMessage({
+                api: 'fromWidget',
+                widgetId: 'notes',
+                requestId: Date.now() + Math.random(),
+                action: action,
+                data: data || {}
+            }, '*');
+        }
 
-            try {
-                // Create API
-                api = new window.mxwidgets.WidgetApi();
-                console.log('Created API');
-                
-                // Handle ready
-                api.on('ready', () => {
-                    console.log('Ready!');
-                    document.getElementById('status').textContent = '✅ Connected';
-                    document.getElementById('status').className = 'status success';
-                    document.getElementById('notes').disabled = false;
-                    document.getElementById('saveBtn').disabled = false;
-                    document.getElementById('loadBtn').disabled = false;
-                    load();
-                });
-                
-                // Start
-                api.start();
-                console.log('Started');
-                
-            } catch (error) {
-                console.error('Error:', error);
-                document.getElementById('status').textContent = '❌ ' + error.message;
-                document.getElementById('status').className = 'status error';
+        // Listen for messages from parent
+        window.addEventListener('message', (e) => {
+            console.log('Got message:', e.data);
+            if (e.data && e.data.api === 'toWidget') {
+                if (e.data.action === 'capabilities') {
+                    // Respond to capabilities request
+                    window.parent.postMessage({
+                        api: 'fromWidget',
+                        widgetId: 'notes',
+                        requestId: e.data.requestId,
+                        action: 'capabilities',
+                        response: { capabilities: [] }
+                    }, '*');
+                }
             }
         });
 
-        async function save() {
-            if (!api) return;
-            try {
-                const notes = document.getElementById('notes').value;
-                await api.sendStateEvent('m.room.message', {
-                    msgtype: 'm.text',
-                    body: notes,
-                    notes_key: KEY
-                });
-                document.getElementById('status').textContent = '✅ Saved!';
-                document.getElementById('status').className = 'status success';
-            } catch (error) {
-                console.error('Save error:', error);
-                document.getElementById('status').textContent = '❌ Save failed: ' + error.message;
-                document.getElementById('status').className = 'status error';
-            }
+        // Start widget
+        window.addEventListener('load', () => {
+            console.log('Widget loaded');
+            
+            // Send ready
+            setTimeout(() => {
+                console.log('Sending ready...');
+                send('ready', {});
+                
+                ready = true;
+                document.getElementById('s').textContent = '✅ Ready to use';
+                document.getElementById('s').className = 'status ok';
+                document.getElementById('t').disabled = false;
+                document.getElementById('save').disabled = false;
+                document.getElementById('load').disabled = false;
+            }, 1000);
+        });
+
+        function save() {
+            const text = document.getElementById('t').value;
+            localStorage.setItem(DATA, text);
+            document.getElementById('s').textContent = '✅ Saved to browser storage!';
+            document.getElementById('s').className = 'status ok';
+            console.log('Saved:', text.length, 'chars');
         }
 
-        async function load() {
-            if (!api) return;
-            try {
-                document.getElementById('status').textContent = '⏳ Loading...';
-                // For now just clear the error
-                document.getElementById('status').textContent = '📝 Start typing...';
-                document.getElementById('status').className = 'status';
-            } catch (error) {
-                console.error('Load error:', error);
-            }
+        function load() {
+            const text = localStorage.getItem(DATA) || '';
+            document.getElementById('t').value = text;
+            document.getElementById('s').textContent = text ? '✅ Loaded!' : '📝 No saved notes';
+            document.getElementById('s').className = 'status ok';
+            console.log('Loaded:', text.length, 'chars');
         }
     </script>
 </body>
