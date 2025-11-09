@@ -4,371 +4,125 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Room Notes</title>
+    <script src="https://unpkg.com/matrix-widget-api@1.7.0/dist/api.umd.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            font-family: system-ui, -apple-system, sans-serif;
             padding: 20px;
+            background: #f5f5f5;
         }
-
-        .container {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-            max-width: 700px;
-            width: 100%;
-            padding: 30px;
-        }
-        
-        .widget-badge {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-            padding: 8px 12px;
+        .status { 
+            padding: 10px; 
+            margin-bottom: 15px; 
             border-radius: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 15px;
-            text-align: center;
+            font-size: 14px;
         }
-        
-        .widget-error {
-            background: #fef3c7;
-            color: #92400e;
-            padding: 12px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 15px;
-            text-align: center;
-            border: 2px solid #fbbf24;
-        }
-
-        h1 {
-            color: #333;
-            margin-bottom: 5px;
-            font-size: 24px;
-        }
-
-        .subtitle {
-            color: #666;
-            margin-bottom: 20px;
-            font-size: 13px;
-        }
-
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
         textarea {
             width: 100%;
-            padding: 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
+            padding: 12px;
             font-size: 14px;
-            font-family: inherit;
-            transition: border-color 0.3s;
+            border: 2px solid #ddd;
+            border-radius: 6px;
             min-height: 300px;
-            resize: vertical;
+            font-family: inherit;
         }
-
-        textarea:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        textarea:disabled {
-            background: #f5f5f5;
-            cursor: not-allowed;
-        }
-
-        .button-group {
-            margin-top: 15px;
-            display: flex;
-            gap: 10px;
-        }
-
         button {
-            flex: 1;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            padding: 12px 24px;
+            margin: 10px 10px 0 0;
             border: none;
-            padding: 14px 24px;
-            border-radius: 8px;
-            font-size: 15px;
+            border-radius: 6px;
+            background: #667eea;
+            color: white;
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
         }
-
-        button:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        button:active {
-            transform: translateY(0);
-        }
-
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .button-secondary {
-            background: #6c757d;
-        }
-
-        .status {
-            margin-top: 15px;
-            padding: 12px;
-            border-radius: 6px;
-            font-size: 14px;
-            text-align: center;
-            display: none;
-        }
-
-        .status.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            display: block;
-        }
-
-        .status.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            display: block;
-        }
-
-        .status.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-            display: block;
-        }
-
-        .last-saved {
-            font-size: 12px;
-            color: #888;
-            margin-top: 10px;
-            text-align: center;
-        }
+        button:hover { background: #5568d3; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="widget-badge" id="widgetBadge" style="display: none;">🟢 Connected</div>
-        <div class="widget-error" id="widgetError">⏳ Connecting to room...</div>
-        
-        <h1>📝 Room Notes</h1>
-        <p class="subtitle">Your private notes for this room (auto-saved)</p>
-
-        <textarea id="notes" placeholder="Type your notes here... They'll be saved to this room and synced across your devices." disabled></textarea>
-
-        <div class="button-group">
-            <button onclick="saveNotes()" disabled id="saveBtn">💾 Save Notes</button>
-            <button onclick="loadNotes()" class="button-secondary" disabled id="loadBtn">🔄 Reload</button>
-        </div>
-
-        <div class="status" id="status"></div>
-        <div class="last-saved" id="lastSaved"></div>
-    </div>
+    <div class="status" id="status">⏳ Connecting...</div>
+    <h2>📝 Room Notes</h2>
+    <textarea id="notes" placeholder="Your notes..." disabled></textarea>
+    <br>
+    <button id="saveBtn" onclick="save()" disabled>💾 Save</button>
+    <button onclick="load()" disabled id="loadBtn">🔄 Load</button>
 
     <script>
-        const DATA_KEY = 'social.hyphae.widget.notes';
-        let widgetApi = null;
-        let autoSaveTimeout = null;
+        const KEY = 'social.hyphae.notes';
+        let api = null;
 
-        // Load script dynamically with multiple CDN fallbacks
-        function loadScript(src) {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = src;
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
-        }
-
-        async function loadWidgetAPI() {
-            const cdnUrls = [
-                'https://unpkg.com/matrix-widget-api@1.7.0/dist/api.umd.js',
-                'https://cdn.jsdelivr.net/npm/matrix-widget-api@1.7.0/dist/api.umd.js',
-                'https://unpkg.com/matrix-widget-api@latest/dist/api.umd.js'
-            ];
-
-            for (const url of cdnUrls) {
-                try {
-                    console.log('Trying to load from:', url);
-                    await loadScript(url);
-                    if (typeof window.mxwidgets !== 'undefined') {
-                        console.log('✓ Loaded successfully from:', url);
-                        return true;
-                    }
-                } catch (error) {
-                    console.log('✗ Failed to load from:', url, error);
-                }
-            }
+        window.addEventListener('DOMContentLoaded', async () => {
+            console.log('Initializing...');
             
-            throw new Error('Failed to load matrix-widget-api from all CDNs');
-        }
+            // Wait for library to load
+            if (typeof window.mxwidgets === 'undefined') {
+                console.error('Widget API not loaded!');
+                document.getElementById('status').textContent = '❌ Library failed to load';
+                document.getElementById('status').className = 'status error';
+                return;
+            }
 
-        async function init() {
             try {
-                console.log('Initializing widget...');
+                // Create API
+                api = new window.mxwidgets.WidgetApi();
+                console.log('Created API');
                 
-                // Try to load the widget API library
-                await loadWidgetAPI();
-                
-                console.log('window.mxwidgets available?', typeof window.mxwidgets);
-                
-                if (typeof window.mxwidgets === 'undefined') {
-                    throw new Error('matrix-widget-api not loaded');
-                }
-                
-                // Create widget API instance
-                const urlParams = new URLSearchParams(window.location.search);
-                const widgetId = urlParams.get('widgetId') || 'room-notes-widget';
-                
-                console.log('Creating WidgetApi with ID:', widgetId);
-                widgetApi = new window.mxwidgets.WidgetApi(widgetId);
-                
-                // Request capabilities for reading/writing room account data
-                widgetApi.requestCapability('org.matrix.msc2762.timeline:*');
-                widgetApi.requestCapability('org.matrix.msc2762.send.event:*');
-                widgetApi.requestCapability('org.matrix.msc2762.receive.event:*');
-                
-                // Wait for ready
-                widgetApi.on('ready', async () => {
-                    console.log('Widget ready!');
-                    
-                    // Show success
-                    document.getElementById('widgetBadge').style.display = 'block';
-                    document.getElementById('widgetError').style.display = 'none';
-                    
-                    // Enable inputs and buttons
+                // Handle ready
+                api.on('ready', () => {
+                    console.log('Ready!');
+                    document.getElementById('status').textContent = '✅ Connected';
+                    document.getElementById('status').className = 'status success';
                     document.getElementById('notes').disabled = false;
                     document.getElementById('saveBtn').disabled = false;
                     document.getElementById('loadBtn').disabled = false;
-                    
-                    showStatus('✅ Connected!', 'success');
-                    
-                    // Auto-load existing notes
-                    await loadNotes();
-                    
-                    // Set up auto-save on typing
-                    document.getElementById('notes').addEventListener('input', () => {
-                        clearTimeout(autoSaveTimeout);
-                        autoSaveTimeout = setTimeout(() => {
-                            saveNotes(true);
-                        }, 2000);
-                    });
+                    load();
                 });
                 
-                // Start the widget
-                console.log('Starting widget...');
-                widgetApi.start();
+                // Start
+                api.start();
+                console.log('Started');
                 
             } catch (error) {
-                console.error('Failed to initialize widget:', error);
-                document.getElementById('widgetError').textContent = '❌ Failed to connect: ' + error.message;
-                showStatus('❌ Error: ' + error.message, 'error');
+                console.error('Error:', error);
+                document.getElementById('status').textContent = '❌ ' + error.message;
+                document.getElementById('status').className = 'status error';
             }
-        }
+        });
 
-        function showStatus(message, type = 'info') {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = `status ${type}`;
-            
-            if (type === 'success') {
-                setTimeout(() => {
-                    status.style.display = 'none';
-                }, 2000);
-            }
-        }
-
-        async function saveNotes(isAutoSave = false) {
-            if (!widgetApi) {
-                showStatus('❌ Not connected', 'error');
-                return;
-            }
-
-            const notes = document.getElementById('notes').value;
-            
-            if (!isAutoSave) {
-                showStatus('⏳ Saving...', 'info');
-            }
-
+        async function save() {
+            if (!api) return;
             try {
-                const data = {
-                    content: notes,
-                    lastModified: new Date().toISOString()
-                };
-                
-                // Send state event to save data
-                await widgetApi.sendStateEvent('m.room.account_data', DATA_KEY, data);
-                
-                if (!isAutoSave) {
-                    showStatus('✅ Saved!', 'success');
-                }
-                
-                updateLastSaved(new Date());
+                const notes = document.getElementById('notes').value;
+                await api.sendStateEvent('m.room.message', {
+                    msgtype: 'm.text',
+                    body: notes,
+                    notes_key: KEY
+                });
+                document.getElementById('status').textContent = '✅ Saved!';
+                document.getElementById('status').className = 'status success';
             } catch (error) {
                 console.error('Save error:', error);
-                showStatus(`❌ Error saving: ${error.message}`, 'error');
+                document.getElementById('status').textContent = '❌ Save failed: ' + error.message;
+                document.getElementById('status').className = 'status error';
             }
         }
 
-        async function loadNotes() {
-            if (!widgetApi) {
-                showStatus('❌ Not connected', 'error');
-                return;
-            }
-
-            showStatus('⏳ Loading...', 'info');
-
+        async function load() {
+            if (!api) return;
             try {
-                // Read state event to load data
-                const events = await widgetApi.readStateEvents('m.room.account_data', DATA_KEY);
-                
-                if (events && events.length > 0 && events[0].content) {
-                    const data = events[0].content;
-                    document.getElementById('notes').value = data.content || '';
-                    
-                    if (data.lastModified) {
-                        updateLastSaved(new Date(data.lastModified));
-                    }
-                    
-                    showStatus('✅ Loaded!', 'success');
-                } else {
-                    showStatus('ℹ️ No saved notes yet', 'info');
-                    setTimeout(() => {
-                        document.getElementById('status').style.display = 'none';
-                    }, 2000);
-                }
+                document.getElementById('status').textContent = '⏳ Loading...';
+                // For now just clear the error
+                document.getElementById('status').textContent = '📝 Start typing...';
+                document.getElementById('status').className = 'status';
             } catch (error) {
                 console.error('Load error:', error);
-                // Silently fail on first load if no data exists
-                document.getElementById('status').style.display = 'none';
             }
         }
-
-        function updateLastSaved(date) {
-            const lastSaved = document.getElementById('lastSaved');
-            lastSaved.textContent = `Last saved: ${date.toLocaleTimeString()}`;
-        }
-
-        // Initialize on load
-        window.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
