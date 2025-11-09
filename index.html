@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Matrix Room Storage</title>
+    <title>Room Notes</title>
     <style>
         * {
             margin: 0;
@@ -25,7 +25,7 @@
             background: white;
             border-radius: 12px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-            max-width: 600px;
+            max-width: 700px;
             width: 100%;
             padding: 30px;
         }
@@ -55,71 +55,55 @@
 
         h1 {
             color: #333;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
             font-size: 24px;
         }
 
         .subtitle {
             color: #666;
-            margin-bottom: 25px;
-            font-size: 14px;
+            margin-bottom: 20px;
+            font-size: 13px;
         }
 
-        .section {
-            margin-bottom: 25px;
-        }
-
-        .section-title {
-            font-weight: 600;
-            color: #444;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-
-        .input-group {
-            margin-bottom: 15px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 5px;
-            color: #555;
-            font-size: 14px;
-            font-weight: 500;
-        }
-
-        input, textarea {
+        textarea {
             width: 100%;
-            padding: 10px;
+            padding: 15px;
             border: 2px solid #e0e0e0;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 14px;
             font-family: inherit;
             transition: border-color 0.3s;
+            min-height: 300px;
+            resize: vertical;
         }
 
-        input:focus, textarea:focus {
+        textarea:focus {
             outline: none;
             border-color: #667eea;
         }
 
-        textarea {
-            resize: vertical;
-            min-height: 100px;
-            font-family: 'Courier New', monospace;
+        textarea:disabled {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+
+        .button-group {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
         }
 
         button {
+            flex: 1;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 14px;
+            padding: 14px 24px;
+            border-radius: 8px;
+            font-size: 15px;
             font-weight: 600;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
-            margin-right: 10px;
         }
 
         button:hover:not(:disabled) {
@@ -146,6 +130,7 @@
             padding: 12px;
             border-radius: 6px;
             font-size: 14px;
+            text-align: center;
             display: none;
         }
 
@@ -170,81 +155,44 @@
             display: block;
         }
 
-        .stored-data {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #dee2e6;
-            margin-top: 10px;
-        }
-
-        .stored-data pre {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            font-size: 13px;
-            color: #333;
-            font-family: 'Courier New', monospace;
-        }
-
-        .help-text {
+        .last-saved {
             font-size: 12px;
-            color: #666;
-            margin-top: 5px;
-            font-style: italic;
+            color: #888;
+            margin-top: 10px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="widget-badge" id="widgetBadge" style="display: none;">🟢 Connected to Matrix Room</div>
-        <div class="widget-error" id="widgetError">
-            ⏳ Initializing widget...
-        </div>
+        <div class="widget-badge" id="widgetBadge" style="display: none;">🟢 Connected</div>
+        <div class="widget-error" id="widgetError">⏳ Connecting to room...</div>
         
-        <h1>📦 Matrix Room Storage</h1>
-        <p class="subtitle">Save and retrieve data from this room's account data</p>
+        <h1>📝 Room Notes</h1>
+        <p class="subtitle">Your private notes for this room (auto-saved)</p>
 
-        <div class="section">
-            <div class="section-title">Store Data</div>
-            <div class="input-group">
-                <label for="dataKey">Data Key</label>
-                <input type="text" id="dataKey" placeholder="my.custom.data" value="app.storage.data" disabled>
-                <div class="help-text">Unique identifier for your data (reverse domain notation recommended)</div>
-            </div>
-            <div class="input-group">
-                <label for="dataValue">Data Value (JSON)</label>
-                <textarea id="dataValue" placeholder='{"message": "Hello from Matrix!", "timestamp": 1234567890}' disabled>{
-  "message": "Hello from Matrix!",
-  "created": "2025-11-09"
-}</textarea>
-                <div class="help-text">Data to store (must be valid JSON)</div>
-            </div>
-            <button onclick="saveData()" disabled>💾 Save to Room</button>
-            <button onclick="loadData()" class="button-secondary" disabled>🔄 Load from Room</button>
+        <textarea id="notes" placeholder="Type your notes here... They'll be saved to this room and synced across your devices." disabled></textarea>
+
+        <div class="button-group">
+            <button onclick="saveNotes()" disabled id="saveBtn">💾 Save Notes</button>
+            <button onclick="loadNotes()" class="button-secondary" disabled id="loadBtn">🔄 Reload</button>
         </div>
 
         <div class="status" id="status"></div>
-
-        <div class="section" id="loadedDataSection" style="display: none;">
-            <div class="section-title">Loaded Data</div>
-            <div class="stored-data">
-                <pre id="loadedData"></pre>
-            </div>
-        </div>
+        <div class="last-saved" id="lastSaved"></div>
     </div>
 
-    <!-- Use the official matrix-widget-toolkit library -->
     <script type="module">
         import { WidgetApiImpl } from 'https://esm.sh/@matrix-widget-toolkit/api@5.0.2';
         
+        const DATA_KEY = 'social.hyphae.widget.notes';
         let widgetApi = null;
+        let autoSaveTimeout = null;
 
         async function init() {
             try {
-                // Create widget API instance
                 console.log('Creating widget API...');
                 widgetApi = await WidgetApiImpl.create();
-                
                 console.log('Widget API created!');
                 
                 // Show success
@@ -252,14 +200,26 @@
                 document.getElementById('widgetError').style.display = 'none';
                 
                 // Enable inputs and buttons
-                document.getElementById('dataKey').disabled = false;
-                document.getElementById('dataValue').disabled = false;
-                document.querySelectorAll('button').forEach(btn => btn.disabled = false);
+                document.getElementById('notes').disabled = false;
+                document.getElementById('saveBtn').disabled = false;
+                document.getElementById('loadBtn').disabled = false;
                 
-                showStatus('✅ Connected to Matrix room!', 'success');
+                showStatus('✅ Connected!', 'success');
+                
+                // Auto-load existing notes
+                await loadNotes();
+                
+                // Set up auto-save on typing
+                document.getElementById('notes').addEventListener('input', () => {
+                    clearTimeout(autoSaveTimeout);
+                    autoSaveTimeout = setTimeout(() => {
+                        saveNotes(true);
+                    }, 2000); // Auto-save 2 seconds after stopping typing
+                });
+                
             } catch (error) {
                 console.error('Failed to initialize widget:', error);
-                document.getElementById('widgetError').textContent = '❌ Failed to initialize. Make sure this is added as a widget to a Matrix room.';
+                document.getElementById('widgetError').textContent = '❌ Failed to connect. Make sure this is added as a widget to a Matrix room.';
                 showStatus('❌ Error: ' + error.message, 'error');
             }
         }
@@ -272,80 +232,82 @@
             if (type === 'success') {
                 setTimeout(() => {
                     status.style.display = 'none';
-                }, 3000);
+                }, 2000);
             }
         }
 
-        window.saveData = async function() {
+        window.saveNotes = async function(isAutoSave = false) {
             if (!widgetApi) {
-                showStatus('❌ Widget not ready', 'error');
+                showStatus('❌ Not connected', 'error');
                 return;
             }
 
-            const dataKey = document.getElementById('dataKey').value;
-            const dataValue = document.getElementById('dataValue').value;
-
-            if (!dataKey || !dataValue) {
-                showStatus('❌ Please fill in data key and value', 'error');
-                return;
+            const notes = document.getElementById('notes').value;
+            
+            if (!isAutoSave) {
+                showStatus('⏳ Saving...', 'info');
             }
-
-            // Validate JSON
-            let jsonData;
-            try {
-                jsonData = JSON.parse(dataValue);
-            } catch (e) {
-                showStatus('❌ Invalid JSON format: ' + e.message, 'error');
-                return;
-            }
-
-            showStatus('⏳ Saving data to room...', 'info');
 
             try {
-                // Send room account data event
-                await widgetApi.sendRoomAccountData(dataKey, jsonData);
-                showStatus('✅ Data saved successfully to room!', 'success');
+                const data = {
+                    content: notes,
+                    lastModified: new Date().toISOString()
+                };
+                
+                await widgetApi.sendRoomAccountData(DATA_KEY, data);
+                
+                if (!isAutoSave) {
+                    showStatus('✅ Saved!', 'success');
+                }
+                
+                updateLastSaved(new Date());
             } catch (error) {
                 console.error('Save error:', error);
                 showStatus(`❌ Error saving: ${error.message}`, 'error');
             }
         };
 
-        window.loadData = async function() {
+        window.loadNotes = async function() {
             if (!widgetApi) {
-                showStatus('❌ Widget not ready', 'error');
+                showStatus('❌ Not connected', 'error');
                 return;
             }
 
-            const dataKey = document.getElementById('dataKey').value;
-
-            if (!dataKey) {
-                showStatus('❌ Please enter a data key', 'error');
-                return;
-            }
-
-            showStatus('⏳ Loading data from room...', 'info');
+            showStatus('⏳ Loading...', 'info');
 
             try {
-                // Receive room account data events
-                const events = await widgetApi.receiveRoomAccountData(dataKey);
+                const events = await widgetApi.receiveRoomAccountData(DATA_KEY);
                 
                 if (events && events.length > 0 && events[0].content) {
                     const data = events[0].content;
-                    document.getElementById('loadedData').textContent = JSON.stringify(data, null, 2);
-                    document.getElementById('loadedDataSection').style.display = 'block';
-                    document.getElementById('dataValue').value = JSON.stringify(data, null, 2);
-                    showStatus('✅ Data loaded successfully from room!', 'success');
+                    document.getElementById('notes').value = data.content || '';
+                    
+                    if (data.lastModified) {
+                        updateLastSaved(new Date(data.lastModified));
+                    }
+                    
+                    showStatus('✅ Loaded!', 'success');
                 } else {
-                    showStatus('ℹ️ No data found for this key', 'info');
-                    document.getElementById('loadedDataSection').style.display = 'none';
+                    showStatus('ℹ️ No saved notes yet', 'info');
+                    setTimeout(() => {
+                        document.getElementById('status').style.display = 'none';
+                    }, 2000);
                 }
             } catch (error) {
                 console.error('Load error:', error);
-                showStatus(`❌ Error loading: ${error.message}`, 'error');
-                document.getElementById('loadedDataSection').style.display = 'none';
+                // Silently fail on first load if no data exists
+                if (!error.message.includes('not found')) {
+                    showStatus(`❌ Error loading: ${error.message}`, 'error');
+                } else {
+                    document.getElementById('status').style.display = 'none';
+                }
             }
         };
+
+        function updateLastSaved(date) {
+            const lastSaved = document.getElementById('lastSaved');
+            lastSaved.textContent = `Last saved: ${date.toLocaleTimeString()}`;
+        }
 
         // Initialize on load
         init();
