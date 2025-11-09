@@ -21,73 +21,150 @@
     <h2>📝 Room Notes</h2>
     <textarea id="t" placeholder="Your notes..." disabled></textarea>
     <br>
-    <button id="save" onclick="save()" disabled>💾 Save</button>
-    <button id="load" onclick="load()" disabled>🔄 Load</button>
+    <button id="save" onclick="save()" disabled>💾 Save to Room</button>
+    <button id="load" onclick="load()" disabled>🔄 Load from Room</button>
 
     <script>
-        const DATA = 'hyphae.notes';
-        let ready = false;
+        const DATA_KEY = 'social.hyphae.notes';
+        let requests = {};
+        let roomId = null;
 
-        // Send message to parent
-        function send(action, data) {
-            window.parent.postMessage({
-                api: 'fromWidget',
-                widgetId: 'notes',
-                requestId: Date.now() + Math.random(),
-                action: action,
-                data: data || {}
-            }, '*');
+        // Send message to parent and wait for response
+        function sendAndWait(action, data) {
+            return new Promise((resolve, reject) => {
+                const reqId = Date.now() + '-' + Math.random();
+                requests[reqId] = { resolve, reject };
+                
+                window.parent.postMessage({
+                    api: 'fromWidget',
+                    widgetId: 'notes',
+                    requestId: reqId,
+                    action: action,
+                    data: data || {}
+                }, '*');
+                
+                setTimeout(() => {
+                    if (requests[reqId]) {
+                        delete requests[reqId];
+                        reject(new Error('Timeout'));
+                    }
+                }, 10000);
+            });
         }
 
         // Listen for messages from parent
         window.addEventListener('message', (e) => {
+            if (!e.data || e.data.api !== 'toWidget') return;
+            
             console.log('Got message:', e.data);
-            if (e.data && e.data.api === 'toWidget') {
-                if (e.data.action === 'capabilities') {
-                    // Respond to capabilities request
-                    window.parent.postMessage({
-                        api: 'fromWidget',
-                        widgetId: 'notes',
-                        requestId: e.data.requestId,
-                        action: 'capabilities',
-                        response: { capabilities: [] }
-                    }, '*');
-                }
+            
+            // Handle capabilities request
+            if (e.data.action === 'capabilities') {
+                window.parent.postMessage({
+                    api: 'fromWidget',
+                    widgetId: 'notes',
+                    requestId: e.data.requestId,
+                    action: 'capabilities',
+                    response: { capabilities: [] }
+                }, '*');
+                return;
+            }
+            
+            // Handle responses to our requests
+            if (e.data.requestId && requests[e.data.requestId]) {
+                const req = requests[e.data.requestId];
+                delete requests[e.data.requestId];
+                req.resolve(e.data.response || e.data.data || {});
             }
         });
 
         // Start widget
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
             console.log('Widget loaded');
             
+            // Get room ID from URL
+            const params = new URLSearchParams(window.location.search);
+            roomId = params.get('roomId');
+            console.log('Room ID:', roomId);
+            
             // Send ready
-            setTimeout(() => {
+            setTimeout(async () => {
                 console.log('Sending ready...');
-                send('ready', {});
+                window.parent.postMessage({
+                    api: 'fromWidget',
+                    widgetId: 'notes',
+                    action: 'ready',
+                    data: {}
+                }, '*');
                 
-                ready = true;
-                document.getElementById('s').textContent = '✅ Ready to use';
+                document.getElementById('s').textContent = '✅ Connected to room';
                 document.getElementById('s').className = 'status ok';
                 document.getElementById('t').disabled = false;
                 document.getElementById('save').disabled = false;
                 document.getElementById('load').disabled = false;
-            }, 1000);
+                
+                // Auto-load on start
+                await load();
+            }, 500);
         });
 
-        function save() {
+        async function save() {
             const text = document.getElementById('t').value;
-            localStorage.setItem(DATA, text);
-            document.getElementById('s').textContent = '✅ Saved to browser storage!';
-            document.getElementById('s').className = 'status ok';
-            console.log('Saved:', text.length, 'chars');
+            document.getElementById('s').textContent = '⏳ Saving to room...';
+            document.getElementById('s').className = 'status';
+            
+            try {
+                // Save to room account data
+                await sendAndWait('send_event', {
+                    type: 'm.room.account_data',
+                    content: {
+                        text: text,
+                        updated: Date.now()
+                    },
+                    state_key: DATA_KEY,
+                    room_id: roomId
+                });
+                
+                document.getElementById('s').textContent = '✅ Saved to room!';
+                document.getElementById('s').className = 'status ok';
+                console.log('Saved to room:', text.length, 'chars');
+            } catch (error) {
+                console.error('Save error:', error);
+                // Fallback to localStorage
+                localStorage.setItem(DATA_KEY, text);
+                document.getElementById('s').textContent = '✅ Saved locally (Matrix save failed)';
+                document.getElementById('s').className = 'status ok';
+            }
         }
 
-        function load() {
-            const text = localStorage.getItem(DATA) || '';
-            document.getElementById('t').value = text;
-            document.getElementById('s').textContent = text ? '✅ Loaded!' : '📝 No saved notes';
-            document.getElementById('s').className = 'status ok';
-            console.log('Loaded:', text.length, 'chars');
+        async function load() {
+            document.getElementById('s').textContent = '⏳ Loading from room...';
+            document.getElementById('s').className = 'status';
+            
+            try {
+                // Load from room account data
+                const response = await sendAndWait('get_event', {
+                    type: 'm.room.account_data',
+                    state_key: DATA_KEY,
+                    room_id: roomId
+                });
+                
+                if (response && response.content && response.content.text) {
+                    document.getElementById('t').value = response.content.text;
+                    document.getElementById('s').textContent = '✅ Loaded from room!';
+                    document.getElementById('s').className = 'status ok';
+                    console.log('Loaded from room:', response.content.text.length, 'chars');
+                } else {
+                    throw new Error('No data');
+                }
+            } catch (error) {
+                console.error('Load error:', error);
+                // Fallback to localStorage
+                const text = localStorage.getItem(DATA_KEY) || '';
+                document.getElementById('t').value = text;
+                document.getElementById('s').textContent = text ? '📝 Loaded from local storage' : '📝 No saved notes';
+                document.getElementById('s').className = 'status ok';
+            }
         }
     </script>
 </body>
