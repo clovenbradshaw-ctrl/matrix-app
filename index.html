@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Room Storage</title>
+    <script src="https://cdn.jsdelivr.net/npm/matrix-widget-api@1.9.0/dist/api.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 100%;
+            padding: 30px;
+        }
+        
+        .widget-badge {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .widget-error {
+            background: #fef3c7;
+            color: #92400e;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-align: center;
+            border: 2px solid #fbbf24;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 25px;
+            font-size: 14px;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+            font-family: 'Courier New', monospace;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .button-secondary {
+            background: #6c757d;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+
+        .stored-data {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            margin-top: 10px;
+        }
+
+        .stored-data pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 13px;
+            color: #333;
+            font-family: 'Courier New', monospace;
+        }
+
+        .help-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="widget-badge" id="widgetBadge">🟢 Connected to Matrix Room</div>
+        <div class="widget-error" id="widgetError" style="display: none;">
+            ⚠️ This app must be added as a widget to a Matrix room to function.
+        </div>
+        
+        <h1>📦 Matrix Room Storage</h1>
+        <p class="subtitle">Save and retrieve data from this room's account data</p>
+
+        <div class="section">
+            <div class="section-title">Store Data</div>
+            <div class="input-group">
+                <label for="dataKey">Data Key</label>
+                <input type="text" id="dataKey" placeholder="my.custom.data" value="app.storage.data">
+                <div class="help-text">Unique identifier for your data (reverse domain notation recommended)</div>
+            </div>
+            <div class="input-group">
+                <label for="dataValue">Data Value (JSON)</label>
+                <textarea id="dataValue" placeholder='{"message": "Hello from Matrix!", "timestamp": 1234567890}'>{
+  "message": "Hello from Matrix!",
+  "created": "2025-11-09"
+}</textarea>
+                <div class="help-text">Data to store (must be valid JSON)</div>
+            </div>
+            <button onclick="saveData()">💾 Save to Room</button>
+            <button onclick="loadData()" class="button-secondary">🔄 Load from Room</button>
+        </div>
+
+        <div class="status" id="status"></div>
+
+        <div class="section" id="loadedDataSection" style="display: none;">
+            <div class="section-title">Loaded Data</div>
+            <div class="stored-data">
+                <pre id="loadedData"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let widgetApi = null;
+        let isReady = false;
+
+        // Initialize widget API
+        async function initWidgetApi() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const widgetId = urlParams.get('widgetId') || 'matrix-room-storage';
+                
+                // Initialize the widget API
+                widgetApi = new window.mxwidgets.WidgetApi(widgetId);
+                
+                // Wait for ready event
+                widgetApi.on('ready', async () => {
+                    console.log('Widget API ready');
+                    isReady = true;
+                    
+                    // Show success badge
+                    document.getElementById('widgetBadge').style.display = 'block';
+                    document.getElementById('widgetError').style.display = 'none';
+                    
+                    showStatus('✅ Connected to Matrix room!', 'success');
+                });
+                
+                // Handle errors
+                widgetApi.on('error', (error) => {
+                    console.error('Widget API error:', error);
+                    showStatus('⚠️ Widget API error: ' + error.message, 'error');
+                });
+                
+                // Start the widget API
+                await widgetApi.start();
+                
+            } catch (error) {
+                console.error('Failed to initialize widget API:', error);
+                
+                // Show error state
+                document.getElementById('widgetBadge').style.display = 'none';
+                document.getElementById('widgetError').style.display = 'block';
+                
+                // Disable buttons
+                document.querySelectorAll('button').forEach(btn => btn.disabled = true);
+                
+                showStatus('❌ Not running in widget mode. Please add this app as a widget to a Matrix room.', 'error');
+            }
+        }
+
+        function showStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    status.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        async function saveData() {
+            if (!isReady || !widgetApi) {
+                showStatus('❌ Widget not ready. Please add this as a widget to a Matrix room.', 'error');
+                return;
+            }
+            
+            const dataKey = document.getElementById('dataKey').value;
+            const dataValue = document.getElementById('dataValue').value;
+
+            if (!dataKey || !dataValue) {
+                showStatus('❌ Please fill in data key and value', 'error');
+                return;
+            }
+
+            // Validate JSON
+            let jsonData;
+            try {
+                jsonData = JSON.parse(dataValue);
+            } catch (e) {
+                showStatus('❌ Invalid JSON format: ' + e.message, 'error');
+                return;
+            }
+
+            showStatus('⏳ Saving data to room...', 'info');
+
+            try {
+                // Use widget API to set room account data
+                await widgetApi.sendRoomAccountData(dataKey, jsonData);
+                showStatus('✅ Data saved successfully to room!', 'success');
+            } catch (error) {
+                console.error('Save error:', error);
+                showStatus(`❌ Error saving: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadData() {
+            if (!isReady || !widgetApi) {
+                showStatus('❌ Widget not ready. Please add this as a widget to a Matrix room.', 'error');
+                return;
+            }
+            
+            const dataKey = document.getElementById('dataKey').value;
+
+            if (!dataKey) {
+                showStatus('❌ Please enter a data key', 'error');
+                return;
+            }
+
+            showStatus('⏳ Loading data from room...', 'info');
+
+            try {
+                // Use widget API to get room account data
+                const data = await widgetApi.readRoomAccountData(dataKey);
+                
+                if (data) {
+                    document.getElementById('loadedData').textContent = JSON.stringify(data, null, 2);
+                    document.getElementById('loadedDataSection').style.display = 'block';
+                    document.getElementById('dataValue').value = JSON.stringify(data, null, 2);
+                    showStatus('✅ Data loaded successfully from room!', 'success');
+                } else {
+                    showStatus('ℹ️ No data found for this key', 'info');
+                    document.getElementById('loadedDataSection').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Load error:', error);
+                if (error.message && (error.message.includes('not found') || error.message.includes('404'))) {
+                    showStatus('ℹ️ No data found for this key', 'info');
+                    document.getElementById('loadedDataSection').style.display = 'none';
+                } else {
+                    showStatus(`❌ Error loading: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            await initWidgetApi();
+        });
+    </script>
+</body>
+</html>
