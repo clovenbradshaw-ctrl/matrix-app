@@ -39,11 +39,6 @@
             font-weight: 600;
             margin-bottom: 15px;
             text-align: center;
-            display: none;
-        }
-        
-        .widget-badge.active {
-            display: block;
         }
         
         .widget-error {
@@ -127,7 +122,7 @@
             margin-right: 10px;
         }
 
-        button:hover {
+        button:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
@@ -197,25 +192,13 @@
             margin-top: 5px;
             font-style: italic;
         }
-        
-        .debug-console {
-            background: #f8f9fa;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 10px;
-            max-height: 200px;
-            overflow-y: auto;
-            font-size: 11px;
-            font-family: monospace;
-            color: #555;
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="widget-badge" id="widgetBadge">🟢 Connected to Matrix Room</div>
+        <div class="widget-badge" id="widgetBadge" style="display: none;">🟢 Connected to Matrix Room</div>
         <div class="widget-error" id="widgetError">
-            ⚠️ This app must be added as a widget to a Matrix room to function.
+            ⏳ Initializing widget...
         </div>
         
         <h1>📦 Matrix Room Storage</h1>
@@ -225,19 +208,19 @@
             <div class="section-title">Store Data</div>
             <div class="input-group">
                 <label for="dataKey">Data Key</label>
-                <input type="text" id="dataKey" placeholder="my.custom.data" value="app.storage.data">
+                <input type="text" id="dataKey" placeholder="my.custom.data" value="app.storage.data" disabled>
                 <div class="help-text">Unique identifier for your data (reverse domain notation recommended)</div>
             </div>
             <div class="input-group">
                 <label for="dataValue">Data Value (JSON)</label>
-                <textarea id="dataValue" placeholder='{"message": "Hello from Matrix!", "timestamp": 1234567890}'>{
+                <textarea id="dataValue" placeholder='{"message": "Hello from Matrix!", "timestamp": 1234567890}' disabled>{
   "message": "Hello from Matrix!",
   "created": "2025-11-09"
 }</textarea>
                 <div class="help-text">Data to store (must be valid JSON)</div>
             </div>
-            <button onclick="saveData()">💾 Save to Room</button>
-            <button onclick="loadData()" class="button-secondary">🔄 Load from Room</button>
+            <button onclick="saveData()" disabled>💾 Save to Room</button>
+            <button onclick="loadData()" class="button-secondary" disabled>🔄 Load from Room</button>
         </div>
 
         <div class="status" id="status"></div>
@@ -248,156 +231,36 @@
                 <pre id="loadedData"></pre>
             </div>
         </div>
-        
-        <div class="section" style="margin-top: 20px;">
-            <details>
-                <summary style="cursor: pointer; font-weight: 600; color: #666; font-size: 12px;">
-                    🔍 Debug Console
-                </summary>
-                <div class="debug-console" id="debugConsole"></div>
-            </details>
-        </div>
     </div>
 
-    <script>
-        // Widget state
-        let widgetId = null;
-        let isReady = false;
-        let requestCounter = 0;
-        let pendingRequests = {};
+    <!-- Use the official matrix-widget-toolkit library -->
+    <script type="module">
+        import { WidgetApiImpl } from 'https://esm.sh/@matrix-widget-toolkit/api@5.0.2';
+        
+        let widgetApi = null;
 
-        // Debug logging
-        function debugLog(message, data) {
-            const timestamp = new Date().toLocaleTimeString();
-            const logEntry = `[${timestamp}] ${message} ${data ? JSON.stringify(data, null, 2) : ''}`;
-            console.log(`[Widget] ${message}`, data || '');
-            
-            const debugConsole = document.getElementById('debugConsole');
-            if (debugConsole) {
-                debugConsole.textContent += logEntry + '\n';
-                debugConsole.scrollTop = debugConsole.scrollHeight;
-            }
-        }
-
-        // Initialize widget
-        function initWidget() {
-            debugLog('Starting widget initialization...');
-            debugLog('In iframe?', window.parent !== window);
-            debugLog('Location:', window.location.href);
-            
-            // Check if we're in an iframe
-            if (window.parent === window) {
-                debugLog('Not in iframe - showing error');
-                document.getElementById('widgetError').style.display = 'block';
-                document.querySelectorAll('button').forEach(btn => btn.disabled = true);
-                return;
-            }
-
-            // Get widget ID from URL
-            const urlParams = new URLSearchParams(window.location.search);
-            widgetId = urlParams.get('widgetId') || 'matrix-room-storage';
-            debugLog('Widget ID:', widgetId);
-
-            // Set up postMessage listener
-            window.addEventListener('message', handlePostMessage);
-            debugLog('PostMessage listener set up');
-
-            // Send ready message
-            sendToWidget('ready', {});
-            debugLog('Sent ready message');
-        }
-
-        // Handle incoming postMessages
-        function handlePostMessage(event) {
-            debugLog('Received message:', event.data);
-
-            const message = event.data;
-            if (!message || typeof message !== 'object') return;
-
-            // Handle different message types
-            if (message.api === 'fromWidget') {
-                if (message.action === 'capabilities') {
-                    debugLog('Handling capabilities request');
-                    handleCapabilitiesRequest(message);
-                } else if (message.requestId && pendingRequests[message.requestId]) {
-                    debugLog('Handling response to request:', message.requestId);
-                    handleResponse(message);
-                }
-            } else if (message.action === 'ready') {
-                debugLog('Widget confirmed ready by Element');
-                isReady = true;
-                document.getElementById('widgetBadge').classList.add('active');
+        async function init() {
+            try {
+                // Create widget API instance
+                console.log('Creating widget API...');
+                widgetApi = await WidgetApiImpl.create();
+                
+                console.log('Widget API created!');
+                
+                // Show success
+                document.getElementById('widgetBadge').style.display = 'block';
                 document.getElementById('widgetError').style.display = 'none';
+                
+                // Enable inputs and buttons
+                document.getElementById('dataKey').disabled = false;
+                document.getElementById('dataValue').disabled = false;
+                document.querySelectorAll('button').forEach(btn => btn.disabled = false);
+                
                 showStatus('✅ Connected to Matrix room!', 'success');
-            }
-        }
-
-        // Send message to Element
-        function sendToWidget(action, data) {
-            const message = {
-                api: 'toWidget',
-                widgetId: widgetId,
-                action: action,
-                data: data
-            };
-            debugLog('Sending to Element:', message);
-            window.parent.postMessage(message, '*');
-        }
-
-        // Handle capabilities request
-        function handleCapabilitiesRequest(message) {
-            const response = {
-                api: 'toWidget',
-                widgetId: widgetId,
-                requestId: message.requestId,
-                action: 'capabilities',
-                response: {
-                    capabilities: []
-                }
-            };
-            debugLog('Sending capabilities response:', response);
-            window.parent.postMessage(response, '*');
-        }
-
-        // Send action request and wait for response
-        function sendRequest(action, data) {
-            return new Promise((resolve, reject) => {
-                const requestId = `req_${++requestCounter}`;
-                debugLog(`Sending request ${requestId}:`, {action, data});
-
-                pendingRequests[requestId] = { resolve, reject };
-
-                const message = {
-                    api: 'fromWidget',
-                    widgetId: widgetId,
-                    requestId: requestId,
-                    action: action,
-                    data: data
-                };
-
-                window.parent.postMessage(message, '*');
-
-                // Timeout after 10 seconds
-                setTimeout(() => {
-                    if (pendingRequests[requestId]) {
-                        delete pendingRequests[requestId];
-                        reject(new Error('Request timeout'));
-                    }
-                }, 10000);
-            });
-        }
-
-        // Handle response to our request
-        function handleResponse(message) {
-            const request = pendingRequests[message.requestId];
-            if (!request) return;
-
-            delete pendingRequests[message.requestId];
-
-            if (message.response && !message.response.error) {
-                request.resolve(message.response);
-            } else {
-                request.reject(new Error(message.response?.error || 'Request failed'));
+            } catch (error) {
+                console.error('Failed to initialize widget:', error);
+                document.getElementById('widgetError').textContent = '❌ Failed to initialize. Make sure this is added as a widget to a Matrix room.';
+                showStatus('❌ Error: ' + error.message, 'error');
             }
         }
 
@@ -413,9 +276,9 @@
             }
         }
 
-        async function saveData() {
-            if (!isReady) {
-                showStatus('❌ Widget not ready. Please add this as a widget to a Matrix room.', 'error');
+        window.saveData = async function() {
+            if (!widgetApi) {
+                showStatus('❌ Widget not ready', 'error');
                 return;
             }
 
@@ -439,23 +302,18 @@
             showStatus('⏳ Saving data to room...', 'info');
 
             try {
-                // Use postMessage to save data
-                await sendRequest('send_event', {
-                    type: 'room_account_data',
-                    content: jsonData,
-                    state_key: dataKey
-                });
-
+                // Send room account data event
+                await widgetApi.sendRoomAccountData(dataKey, jsonData);
                 showStatus('✅ Data saved successfully to room!', 'success');
             } catch (error) {
-                debugLog('Save error:', error);
+                console.error('Save error:', error);
                 showStatus(`❌ Error saving: ${error.message}`, 'error');
             }
-        }
+        };
 
-        async function loadData() {
-            if (!isReady) {
-                showStatus('❌ Widget not ready. Please add this as a widget to a Matrix room.', 'error');
+        window.loadData = async function() {
+            if (!widgetApi) {
+                showStatus('❌ Widget not ready', 'error');
                 return;
             }
 
@@ -469,34 +327,28 @@
             showStatus('⏳ Loading data from room...', 'info');
 
             try {
-                // Use postMessage to load data
-                const response = await sendRequest('get_event', {
-                    type: 'room_account_data',
-                    state_key: dataKey
-                });
-
-                if (response && response.content) {
-                    document.getElementById('loadedData').textContent = JSON.stringify(response.content, null, 2);
+                // Receive room account data events
+                const events = await widgetApi.receiveRoomAccountData(dataKey);
+                
+                if (events && events.length > 0 && events[0].content) {
+                    const data = events[0].content;
+                    document.getElementById('loadedData').textContent = JSON.stringify(data, null, 2);
                     document.getElementById('loadedDataSection').style.display = 'block';
-                    document.getElementById('dataValue').value = JSON.stringify(response.content, null, 2);
+                    document.getElementById('dataValue').value = JSON.stringify(data, null, 2);
                     showStatus('✅ Data loaded successfully from room!', 'success');
                 } else {
                     showStatus('ℹ️ No data found for this key', 'info');
                     document.getElementById('loadedDataSection').style.display = 'none';
                 }
             } catch (error) {
-                debugLog('Load error:', error);
-                if (error.message.includes('not found') || error.message.includes('404')) {
-                    showStatus('ℹ️ No data found for this key', 'info');
-                    document.getElementById('loadedDataSection').style.display = 'none';
-                } else {
-                    showStatus(`❌ Error loading: ${error.message}`, 'error');
-                }
+                console.error('Load error:', error);
+                showStatus(`❌ Error loading: ${error.message}`, 'error');
+                document.getElementById('loadedDataSection').style.display = 'none';
             }
-        }
+        };
 
-        // Initialize on page load
-        window.addEventListener('DOMContentLoaded', initWidget);
+        // Initialize on load
+        init();
     </script>
 </body>
 </html>
