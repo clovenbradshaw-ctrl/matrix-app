@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Matrix Room Storage</title>
-    <script src="https://unpkg.com/matrix-widget-api@^1.0.0/dist/api.umd.js"></script>
     <style>
         * {
             margin: 0;
@@ -40,6 +39,11 @@
             font-weight: 600;
             margin-bottom: 15px;
             text-align: center;
+            display: none;
+        }
+        
+        .widget-badge.active {
+            display: block;
         }
         
         .widget-error {
@@ -194,16 +198,23 @@
             font-style: italic;
         }
         
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .debug-console {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 11px;
+            font-family: monospace;
+            color: #555;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="widget-badge" id="widgetBadge">🟢 Connected to Matrix Room</div>
-        <div class="widget-error" id="widgetError" style="display: none;">
+        <div class="widget-error" id="widgetError">
             ⚠️ This app must be added as a widget to a Matrix room to function.
         </div>
         
@@ -243,24 +254,24 @@
                 <summary style="cursor: pointer; font-weight: 600; color: #666; font-size: 12px;">
                     🔍 Debug Console
                 </summary>
-                <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; margin-top: 10px;">
-                    <pre id="debugConsole" style="font-size: 11px; color: #555; max-height: 200px; overflow-y: auto; margin: 0;"></pre>
-                </div>
+                <div class="debug-console" id="debugConsole"></div>
             </details>
         </div>
     </div>
 
     <script>
-        // Global variables
-        let widgetApi = null;
+        // Widget state
+        let widgetId = null;
         let isReady = false;
-        
+        let requestCounter = 0;
+        let pendingRequests = {};
+
         // Debug logging
         function debugLog(message, data) {
-            const logEntry = `[${new Date().toLocaleTimeString()}] ${message} ${data ? JSON.stringify(data) : ''}`;
-            console.log(`[Widget Debug] ${message}`, data || '');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message} ${data ? JSON.stringify(data, null, 2) : ''}`;
+            console.log(`[Widget] ${message}`, data || '');
             
-            // Also show in UI
             const debugConsole = document.getElementById('debugConsole');
             if (debugConsole) {
                 debugConsole.textContent += logEntry + '\n';
@@ -268,138 +279,126 @@
             }
         }
 
-        // Initialize widget API
-        async function initWidgetApi() {
-            debugLog('Starting initialization...');
-            debugLog('Window location:', window.location.href);
+        // Initialize widget
+        function initWidget() {
+            debugLog('Starting widget initialization...');
             debugLog('In iframe?', window.parent !== window);
-            debugLog('Widget API available?', typeof window.mxwidgets !== 'undefined');
+            debugLog('Location:', window.location.href);
             
-            if (typeof window.mxwidgets !== 'undefined') {
-                debugLog('mxwidgets object:', Object.keys(window.mxwidgets));
-            }
-            
-            // Check if we're in an iframe (basic widget detection)
-            const inIframe = window.parent !== window;
-            debugLog('Detected iframe context:', inIframe);
-            
-            if (!inIframe) {
+            // Check if we're in an iframe
+            if (window.parent === window) {
                 debugLog('Not in iframe - showing error');
-                showNotWidgetMode();
+                document.getElementById('widgetError').style.display = 'block';
+                document.querySelectorAll('button').forEach(btn => btn.disabled = true);
                 return;
             }
-            
-            try {
-                const urlParams = new URLSearchParams(window.location.search);
-                const widgetId = urlParams.get('widgetId') || 'matrix-room-storage';
-                
-                debugLog('Widget ID:', widgetId);
-                debugLog('URL params:', Object.fromEntries(urlParams));
-                
-                // Try different ways to access the Widget API
-                let WidgetApiConstructor = null;
-                
-                if (window.mxwidgets && window.mxwidgets.WidgetApi) {
-                    WidgetApiConstructor = window.mxwidgets.WidgetApi;
-                } else if (window.MatrixWidget && window.MatrixWidget.WidgetApi) {
-                    WidgetApiConstructor = window.MatrixWidget.WidgetApi;
-                } else if (window.WidgetApi) {
-                    WidgetApiConstructor = window.WidgetApi;
+
+            // Get widget ID from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            widgetId = urlParams.get('widgetId') || 'matrix-room-storage';
+            debugLog('Widget ID:', widgetId);
+
+            // Set up postMessage listener
+            window.addEventListener('message', handlePostMessage);
+            debugLog('PostMessage listener set up');
+
+            // Send ready message
+            sendToWidget('ready', {});
+            debugLog('Sent ready message');
+        }
+
+        // Handle incoming postMessages
+        function handlePostMessage(event) {
+            debugLog('Received message:', event.data);
+
+            const message = event.data;
+            if (!message || typeof message !== 'object') return;
+
+            // Handle different message types
+            if (message.api === 'fromWidget') {
+                if (message.action === 'capabilities') {
+                    debugLog('Handling capabilities request');
+                    handleCapabilitiesRequest(message);
+                } else if (message.requestId && pendingRequests[message.requestId]) {
+                    debugLog('Handling response to request:', message.requestId);
+                    handleResponse(message);
                 }
-                
-                if (!WidgetApiConstructor) {
-                    throw new Error('Widget API constructor not found in any expected location');
-                }
-                
-                debugLog('Found WidgetApi constructor');
-                
-                // Initialize the widget API
-                widgetApi = new WidgetApiConstructor(widgetId);
-                debugLog('Widget API instance created');
-                
-                // Set up event listeners before starting
-                widgetApi.on('ready', async () => {
-                    debugLog('Widget API ready event received!');
-                    isReady = true;
-                    
-                    // Show success badge
-                    document.getElementById('widgetBadge').style.display = 'block';
-                    document.getElementById('widgetError').style.display = 'none';
-                    
-                    showStatus('✅ Connected to Matrix room!', 'success');
-                });
-                
-                widgetApi.on('error', (error) => {
-                    debugLog('Widget API error:', error);
-                    showStatus('⚠️ Widget API error: ' + error.message, 'error');
-                });
-                
-                // Start the widget API
-                debugLog('Starting widget API...');
-                await widgetApi.start();
-                debugLog('Widget API start() called');
-                
-                // Give it a moment to initialize
-                setTimeout(() => {
-                    if (!isReady) {
-                        debugLog('Widget not ready after 2 seconds, trying postMessage fallback');
-                        tryPostMessageFallback();
-                    }
-                }, 2000);
-                
-            } catch (error) {
-                debugLog('Failed to initialize widget API:', error);
-                console.error('Widget initialization error:', error);
-                
-                // Try postMessage fallback
-                debugLog('Attempting postMessage fallback...');
-                tryPostMessageFallback();
+            } else if (message.action === 'ready') {
+                debugLog('Widget confirmed ready by Element');
+                isReady = true;
+                document.getElementById('widgetBadge').classList.add('active');
+                document.getElementById('widgetError').style.display = 'none';
+                showStatus('✅ Connected to Matrix room!', 'success');
             }
         }
-        
-        // Fallback: Try to communicate directly via postMessage
-        function tryPostMessageFallback() {
-            debugLog('Setting up postMessage listener for fallback mode');
-            
-            window.addEventListener('message', (event) => {
-                debugLog('Received postMessage:', event.data);
-                
-                // Respond to capability requests
-                if (event.data && event.data.api === 'fromWidget' && event.data.action === 'capabilities') {
-                    debugLog('Responding to capabilities request');
-                    window.parent.postMessage({
-                        api: 'toWidget',
-                        widgetId: event.data.widgetId,
-                        requestId: event.data.requestId,
-                        response: {
-                            capabilities: []
-                        }
-                    }, '*');
-                }
-            });
-            
-            // Try to signal we're ready
-            window.parent.postMessage({
+
+        // Send message to Element
+        function sendToWidget(action, data) {
+            const message = {
                 api: 'toWidget',
-                action: 'ready'
-            }, '*');
-            
-            showStatus('⚠️ Using fallback mode - limited functionality', 'info');
+                widgetId: widgetId,
+                action: action,
+                data: data
+            };
+            debugLog('Sending to Element:', message);
+            window.parent.postMessage(message, '*');
         }
-        
-        function showNotWidgetMode(errorDetails) {
-            // Show error state
-            document.getElementById('widgetBadge').style.display = 'none';
-            document.getElementById('widgetError').style.display = 'block';
-            
-            // Disable buttons
-            document.querySelectorAll('button').forEach(btn => btn.disabled = true);
-            
-            let errorMsg = '❌ Not running in widget mode. Please add this app as a widget to a Matrix room.';
-            if (errorDetails) {
-                errorMsg += ' (Error: ' + errorDetails + ')';
+
+        // Handle capabilities request
+        function handleCapabilitiesRequest(message) {
+            const response = {
+                api: 'toWidget',
+                widgetId: widgetId,
+                requestId: message.requestId,
+                action: 'capabilities',
+                response: {
+                    capabilities: []
+                }
+            };
+            debugLog('Sending capabilities response:', response);
+            window.parent.postMessage(response, '*');
+        }
+
+        // Send action request and wait for response
+        function sendRequest(action, data) {
+            return new Promise((resolve, reject) => {
+                const requestId = `req_${++requestCounter}`;
+                debugLog(`Sending request ${requestId}:`, {action, data});
+
+                pendingRequests[requestId] = { resolve, reject };
+
+                const message = {
+                    api: 'fromWidget',
+                    widgetId: widgetId,
+                    requestId: requestId,
+                    action: action,
+                    data: data
+                };
+
+                window.parent.postMessage(message, '*');
+
+                // Timeout after 10 seconds
+                setTimeout(() => {
+                    if (pendingRequests[requestId]) {
+                        delete pendingRequests[requestId];
+                        reject(new Error('Request timeout'));
+                    }
+                }, 10000);
+            });
+        }
+
+        // Handle response to our request
+        function handleResponse(message) {
+            const request = pendingRequests[message.requestId];
+            if (!request) return;
+
+            delete pendingRequests[message.requestId];
+
+            if (message.response && !message.response.error) {
+                request.resolve(message.response);
+            } else {
+                request.reject(new Error(message.response?.error || 'Request failed'));
             }
-            showStatus(errorMsg, 'error');
         }
 
         function showStatus(message, type = 'info') {
@@ -415,11 +414,11 @@
         }
 
         async function saveData() {
-            if (!isReady || !widgetApi) {
+            if (!isReady) {
                 showStatus('❌ Widget not ready. Please add this as a widget to a Matrix room.', 'error');
                 return;
             }
-            
+
             const dataKey = document.getElementById('dataKey').value;
             const dataValue = document.getElementById('dataValue').value;
 
@@ -440,21 +439,26 @@
             showStatus('⏳ Saving data to room...', 'info');
 
             try {
-                // Use widget API to set room account data
-                await widgetApi.sendRoomAccountData(dataKey, jsonData);
+                // Use postMessage to save data
+                await sendRequest('send_event', {
+                    type: 'room_account_data',
+                    content: jsonData,
+                    state_key: dataKey
+                });
+
                 showStatus('✅ Data saved successfully to room!', 'success');
             } catch (error) {
-                console.error('Save error:', error);
+                debugLog('Save error:', error);
                 showStatus(`❌ Error saving: ${error.message}`, 'error');
             }
         }
 
         async function loadData() {
-            if (!isReady || !widgetApi) {
+            if (!isReady) {
                 showStatus('❌ Widget not ready. Please add this as a widget to a Matrix room.', 'error');
                 return;
             }
-            
+
             const dataKey = document.getElementById('dataKey').value;
 
             if (!dataKey) {
@@ -465,21 +469,24 @@
             showStatus('⏳ Loading data from room...', 'info');
 
             try {
-                // Use widget API to get room account data
-                const data = await widgetApi.readRoomAccountData(dataKey);
-                
-                if (data) {
-                    document.getElementById('loadedData').textContent = JSON.stringify(data, null, 2);
+                // Use postMessage to load data
+                const response = await sendRequest('get_event', {
+                    type: 'room_account_data',
+                    state_key: dataKey
+                });
+
+                if (response && response.content) {
+                    document.getElementById('loadedData').textContent = JSON.stringify(response.content, null, 2);
                     document.getElementById('loadedDataSection').style.display = 'block';
-                    document.getElementById('dataValue').value = JSON.stringify(data, null, 2);
+                    document.getElementById('dataValue').value = JSON.stringify(response.content, null, 2);
                     showStatus('✅ Data loaded successfully from room!', 'success');
                 } else {
                     showStatus('ℹ️ No data found for this key', 'info');
                     document.getElementById('loadedDataSection').style.display = 'none';
                 }
             } catch (error) {
-                console.error('Load error:', error);
-                if (error.message && (error.message.includes('not found') || error.message.includes('404'))) {
+                debugLog('Load error:', error);
+                if (error.message.includes('not found') || error.message.includes('404')) {
                     showStatus('ℹ️ No data found for this key', 'info');
                     document.getElementById('loadedDataSection').style.display = 'none';
                 } else {
@@ -489,9 +496,7 @@
         }
 
         // Initialize on page load
-        window.addEventListener('DOMContentLoaded', async () => {
-            await initWidgetApi();
-        });
+        window.addEventListener('DOMContentLoaded', initWidget);
     </script>
 </body>
 </html>
